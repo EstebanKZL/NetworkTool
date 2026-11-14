@@ -18,7 +18,7 @@ from networktool.common import (
     APP_DEVELOPER, APP_ICON_ICO, APP_NAME, APP_REPO_URL, APP_VERSION, IS_LINUX, IS_MACOS, IS_WINDOWS, STATUS_OFFLINE,
     STATUS_ONLINE, UNKNOWN, _cleanup_child_processes, _html_escape, _normalize_mac,
     _normalize_mask, _now_str, logger, mask_to_cidr, nettool_data_dir,
-    resource_path,
+    resource_path, smoke_mark,
 )
 from networktool.data.inventory import Inventory, shared_macs
 from networktool.data.profiles import ProfileStore
@@ -1844,14 +1844,19 @@ class MainWindow(QMainWindow):
                                                   QMessageBox.Yes | QMessageBox.No) != QMessageBox.Yes:
             event.ignore()
             return
+        smoke_mark("close: tabs")
         for i in range(self.tabs.count()):
             w = self.tabs.widget(i)
             if hasattr(w, "shutdown") and w is not self.scanner:
                 w.shutdown()
+        smoke_mark("close: scanner")
         self.scanner.shutdown()
         if self.tools_window is not None:
             self.tools_window.close()
+        smoke_mark("close: child processes")
         _cleanup_child_processes()
+        smoke_mark("close: window state")
         save_window_state(self, splitters=self._persisted_splitters(),
                           headers={"devices": self.scanner.table.horizontalHeader()})
+        smoke_mark("close: accepted")
         event.accept()

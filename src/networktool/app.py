@@ -6,7 +6,7 @@ import sys
 import time
 
 from networktool.common import (
-    APP_ICON_ICO, APP_ICON_PNG, APP_NAME, APP_VERSION, IS_WINDOWS, _force_window_icon, logger, resource_path, setup_logging,
+    APP_ICON_ICO, APP_ICON_PNG, APP_NAME, APP_VERSION, IS_WINDOWS, _force_window_icon, logger, resource_path, setup_logging, smoke_mark,
     setup_windows_taskbar_icon,
 )
 from networktool.qt_compat import (
@@ -130,6 +130,9 @@ def main():
     # Prueba de humo (CI): abre la ventana real, la cierra a los pocos segundos y sale con 0;
     # cualquier error no controlado termina con código 1 en lugar de mostrar un diálogo.
     smoke = os.environ.get("NETWORKTOOL_SMOKE_TEST") == "1"
+    if smoke:
+        import faulthandler
+        faulthandler.enable(all_threads=True)   # un fallo de segmento muestra la pila de Python
     setup_logging(debug_mode)
 
     try:
@@ -173,6 +176,7 @@ def main():
             QTimer.singleShot(300, lambda: _force_window_icon(hwnd, icon_path))
 
         rc = _exec(app)
+        smoke_mark("event loop finished")
         # Cierre ordenado: la ventana (y sus hilos) se destruye mientras Qt sigue vivo, antes de
         # que el intérprete desarme los objetos en un orden arbitrario. No usar os._exit: en
         # Windows corta Qt con la QApplication viva y termina en un fallo de segmento.
@@ -181,11 +185,13 @@ def main():
         del win
         import gc
         gc.collect()
+        smoke_mark("window destroyed")
         try:
             from networktool.ui.theme import app_settings
             app_settings().sync()
         except Exception:
             pass
+        smoke_mark("exit")
         sys.exit(rc)
 
     except Exception as _err:

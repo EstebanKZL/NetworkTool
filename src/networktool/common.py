@@ -235,6 +235,14 @@ _vendor_cache_lock = threading.Lock()
 _hostname_cache = {}; _hostname_cache_lock = threading.Lock()
 
 
+def smoke_mark(step: str) -> None:
+    """Prueba de humo (NETWORKTOOL_SMOKE_TEST=1): marca cada paso del arranque y del cierre en
+    stderr, para saber dónde falla un ejecutable compilado que no tiene consola."""
+    if os.environ.get("NETWORKTOOL_SMOKE_TEST") == "1":
+        sys.stderr.write("[smoke] " + step + "\n")
+        sys.stderr.flush()
+
+
 def nettool_data_dir() -> Path:
     """Carpeta de datos de NetworkTool (perfiles, historial, base de fabricantes)."""
     if os.name == "nt":
