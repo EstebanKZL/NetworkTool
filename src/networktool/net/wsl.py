@@ -125,7 +125,7 @@ def has_pty() -> bool:
     if not IS_WINDOWS:
         return False
     try:
-        import winpty  # noqa: F401
+        __import__("winpty")  # solo comprueba que esté instalado
         return True
     except Exception:
         return False

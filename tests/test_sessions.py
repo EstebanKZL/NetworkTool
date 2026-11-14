@@ -132,6 +132,24 @@ class TestVault(unittest.TestCase):
             self.assertEqual(v.password(c), "")
 
 
+class TestRemoteNames(unittest.TestCase):
+    """Un servidor SFTP/FTP malicioso no puede hacer escribir fuera de la carpeta de descarga."""
+
+    def test_listing_drops_traversal_names(self):
+        entries = [{"name": n} for n in ("..", ".", "a/b", "x\x00y", "", "ok.txt")]
+        self.assertEqual([e["name"] for e in filebrowser._only_valid(entries)], ["ok.txt"])
+
+    def test_local_child_stays_inside(self):
+        base = tempfile.mkdtemp()
+        self.assertEqual(filebrowser._local_child(base, "ok.txt"), os.path.join(base, "ok.txt"))
+        bad = ["..", "../x", "..\\x", "sub\\f"]
+        if os.name == "nt":
+            bad += ["a:b", "con "]
+        for name in bad:
+            with self.assertRaises(ValueError, msg=name):
+                filebrowser._local_child(base, name)
+
+
 class TestStrings(unittest.TestCase):
     def test_same_keys_in_both_languages(self):
         self.assertEqual(set(STRINGS["es"]), set(STRINGS["en"]))
@@ -529,7 +547,7 @@ class TestLocalFSAndWSL(unittest.TestCase):
     @unittest.skipUnless(sys.platform == "win32", "solo Windows")
     def test_local_pty_backend_cmd(self):
         try:
-            import winpty  # noqa: F401
+            __import__("winpty")  # solo comprueba que esté instalado
         except ImportError:
             self.skipTest("pywinpty no instalado")
         b = terminal.LocalPtyBackend({"command": ["cmd.exe"]}, 100, 30)

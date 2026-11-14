@@ -64,6 +64,27 @@ def friendly_error(exc: Exception) -> str:
     return text
 
 
+def _remote_name_ok(name: str) -> bool:
+    """Nombre válido en un listado remoto: un servidor malicioso podría devolver "..", rutas
+    con "/" o caracteres nulos para escribir fuera de la carpeta al descargar."""
+    return bool(name) and name not in (".", "..") and "/" not in name and "\x00" not in name
+
+
+def _only_valid(entries: List[Dict]) -> List[Dict]:
+    return [e for e in entries if _remote_name_ok(e["name"])]
+
+
+def _local_child(base: str, name: str) -> str:
+    """Ruta local para descargar `name` dentro de `base`, sin salir nunca de `base`."""
+    unsafe = (not _remote_name_ok(name) or "\\" in name
+              or (os.name == "nt" and (":" in name or name.rstrip(" .") != name)))
+    dst = os.path.join(base, name)
+    root = os.path.realpath(base)
+    if unsafe or os.path.commonpath([root, os.path.realpath(dst)]) != root:
+        raise ValueError(tr("fb.err_unsafe_name", name=name))
+    return dst
+
+
 def _entry(name, is_dir, size=None, mtime=None, mode=0, owner="", group="", is_link=False, perms="") -> Dict:
     return {"name": name, "is_dir": is_dir, "is_link": is_link, "size": None if is_dir else size,
             "mtime": mtime, "mode": mode or 0, "owner": owner, "group": group,
@@ -112,7 +133,7 @@ class _RemoteFS:
         os.makedirs(local, exist_ok=True)
         count = 0
         for e in self.listdir(remote):
-            src, dst = posixpath.join(remote, e["name"]), os.path.join(local, e["name"])
+            src, dst = posixpath.join(remote, e["name"]), _local_child(local, e["name"])
             if e["is_dir"]:
                 count += self.download_tree(src, dst, progress)
             else:
@@ -188,7 +209,7 @@ class SFTPFS(_RemoteFS):
             out.append(_entry(a.filename, is_dir, a.st_size, a.st_mtime, mode,
                               owner or str(a.st_uid if a.st_uid is not None else ""),
                               group or str(a.st_gid if a.st_gid is not None else ""), is_link))
-        return out
+        return _only_valid(out)
 
     def stat(self, path: str) -> Dict:
         a = self.sftp.lstat(path)
@@ -267,7 +288,7 @@ class FTPFS(_RemoteFS):
                 mode = (int(mode, 8) | (stat.S_IFDIR if is_dir else stat.S_IFREG)) if mode else 0
                 out.append(_entry(name, is_dir, int(facts.get("size") or 0), mtime, mode,
                                   facts.get("unix.owner", ""), facts.get("unix.group", "")))
-            return out
+            return _only_valid(out)
         except ftplib.error_perm:
             return self._list_fallback(path)
 
@@ -289,7 +310,7 @@ class FTPFS(_RemoteFS):
             is_dir = perms.startswith("d") or is_link
             size = int(parts[4]) if parts[4].isdigit() and not is_dir else None
             out.append(_entry(name, is_dir, size, None, 0, parts[2], parts[3], is_link, perms))
-        return out
+        return _only_valid(out)
 
     def stat(self, path: str) -> Dict:
         parent, name = posixpath.split(path.rstrip("/"))
@@ -1313,7 +1334,12 @@ class FileBrowserTab(QWidget):
     def _local_copy_path(self, remote: str) -> str:
         safe_host = "".join(c if c.isalnum() or c in "._-" else "_" for c in f"{self.host_label}")
         base = os.path.join(tempfile.gettempdir(), "NetworkTool", "remote", safe_host)
-        local = os.path.join(base, *[p for p in remote.split("/") if p and p != ".."])
+        parts = ["".join(c if c not in '\\:*?"<>|\x00' else "_" for c in p).rstrip(" .") or "_"
+                 for p in remote.split("/") if p and p not in (".", "..")]
+        local = os.path.join(base, *parts)
+        root = os.path.realpath(base)
+        if not parts or os.path.commonpath([root, os.path.realpath(local)]) != root:
+            raise ValueError(tr("fb.err_unsafe_name", name=remote))
         os.makedirs(os.path.dirname(local), exist_ok=True)
         return local
 
@@ -1456,7 +1482,13 @@ class FileBrowserTab(QWidget):
             folder = QFileDialog.getExistingDirectory(self, tr("fb.choose_folder"))
             if not folder:
                 return
-            targets = [(e, os.path.join(folder, e["name"])) for e in sel]
+            targets = []
+            for e in sel:
+                try:
+                    targets.append((e, _local_child(folder, e["name"])))
+                except ValueError as ex:
+                    QMessageBox.warning(self, tr("fb.download"), str(ex))
+                    return
         fs, cb = self.fs, self._progress_cb()
         self.progress.setValue(0)
         self.progress.setVisible(True)

@@ -1022,6 +1022,8 @@ STRINGS = {
         "tip.theme": 'Grafito (oscuro) o Papel (claro). Se aplica al reiniciar.',
         # ── Diseño v6.3 / publicación ──
         "msg.startup_error_text": 'No se pudo iniciar {app}:\n\n{error}',
+        # ── Diseño v6.3 / publicación ──
+        "fb.err_unsafe_name": 'No se descarga «{name}»: el nombre no es válido en esta PC o saldría de la carpeta elegida.',
     },
 
     "en": {
@@ -2041,5 +2043,7 @@ STRINGS = {
         "tip.theme": 'Graphite (dark) or Paper (light). Applied on restart.',
         # ── Diseño v6.3 / publicación ──
         "msg.startup_error_text": '{app} could not start:\n\n{error}',
+        # ── Diseño v6.3 / publicación ──
+        "fb.err_unsafe_name": 'Not downloading “{name}”: the name is not valid on this PC or would leave the chosen folder.',
     },
 }

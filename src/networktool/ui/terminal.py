@@ -105,7 +105,7 @@ def terminal_missing_libs(protocol: str) -> str:
     need = []
     if protocol in ("wsl", "shell"):
         try:
-            import winpty  # noqa: F401
+            __import__("winpty")  # solo comprueba que esté instalado
         except Exception:
             need.append("pywinpty")
     if protocol in ("ssh", "sftp") and paramiko is None:
