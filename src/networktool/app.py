@@ -10,7 +10,7 @@ from networktool.common import (
     setup_windows_taskbar_icon,
 )
 from networktool.qt_compat import (
-    QApplication, QIcon, QMessageBox, QTimer, Qt, _QSharedMemory, _QT_BACKEND, _exec,
+    QApplication, QIcon, QMessageBox, QTimer, Qt, _QSharedMemory, _QT_BACKEND, _delete_qobject, _exec,
 )
 from networktool.i18n import check_translations, tr
 from networktool.ui.main_window import MainWindow
@@ -191,6 +191,17 @@ def main():
             app_settings().sync()
         except Exception:
             pass
+        if _QT_BACKEND == "PySide2":
+            # PySide2 (línea Windows 7, sobre todo 32 bits) falla al desarmar Qt durante el cierre
+            # del intérprete, cuando ya no queda código nuestro. Con todo guardado, se destruye la
+            # QApplication explícitamente y se termina el proceso sin pasar por ese desarme.
+            import logging
+            logging.shutdown()
+            if _delete_qobject(app):
+                smoke_mark("exit (PySide2)")
+                sys.stdout.flush()
+                sys.stderr.flush()
+                os._exit(rc)
         smoke_mark("exit")
         sys.exit(rc)
 

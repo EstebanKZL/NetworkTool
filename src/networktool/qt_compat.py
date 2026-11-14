@@ -119,3 +119,14 @@ def _event_pos(event):
 
 
 _gpos = _global_pos
+
+
+def _delete_qobject(obj) -> bool:
+    """Destruye ya el objeto C++ de Qt (shiboken.delete). Devuelve False si no se pudo."""
+    import importlib
+    try:
+        shiboken = importlib.import_module("shiboken6" if _QT_BACKEND == "PySide6" else "shiboken2")
+        shiboken.delete(obj)
+        return True
+    except Exception:
+        return False
