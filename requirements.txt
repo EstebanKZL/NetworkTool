@@ -1,0 +1,11 @@
+# Qt: PySide6 en Python 3.9+; PySide2 solo para Windows 7 (Python 3.8)
+PySide6>=6.5; python_version >= "3.9"
+PySide2>=5.15.2.1; python_version < "3.9"
+psutil>=5.9; python_version >= "3.9"
+psutil>=5.9,<6; python_version < "3.9"     # con ruedas para Windows de 32 bits
+openpyxl>=3.1.0
+# Sesiones integradas: SSH / SFTP (paramiko) y emulación de terminal (pyte)
+paramiko>=3.4.0
+pyte>=0.8.1
+# Terminal local y WSL dentro de la app (ConPTY: Windows 10 1809 o más nuevo)
+pywinpty>=2.0.13; sys_platform == "win32" and python_version >= "3.9"

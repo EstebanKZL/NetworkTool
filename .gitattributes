@@ -1,0 +1,11 @@
+# Texto con fin de línea LF en el repositorio (los scripts de build corren en Linux y Windows)
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.iss text eol=crlf
+
+# Binarios
+*.ico binary
+*.png binary
+*.icns binary
+*.zip binary

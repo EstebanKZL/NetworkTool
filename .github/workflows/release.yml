@@ -1,0 +1,164 @@
+# Al subir un tag vX.Y.Z: tests, build de todas las plataformas en GitHub (no en la PC)
+# y release con los archivos, SHA256SUMS.txt y las notas del CHANGELOG.
+# Nombres: <AppName>-<versión>-<os>-<arq>-<variante>.
+#   win-x64       Python 3.12 + PySide6   Windows 10/11 64 bits        portable.zip + setup.exe
+#   win7-x64      Python 3.8  + PySide2   Windows 7 a 11, 64 bits      portable.zip + setup.exe
+#   win7-x86      Python 3.8  + PySide2   Windows 7 a 11, 32 bits      portable.zip + setup.exe
+#   linux-x86_64  Ubuntu 22.04 + PySide6  AppImage (glibc 2.35+)
+# La línea win7 lleva la Universal CRT junto al .exe (build/build_windows.py).
+# Cada ejecutable pasa el autodiagnóstico (--selftest) y abre la interfaz real
+# (NETWORKTOOL_SMOKE_TEST=1) antes de publicarse.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:          # compilar sin publicar (los archivos quedan como artefactos)
+
+permissions:
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: El tag coincide con VERSION
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          test "v$(cat VERSION)" = "${GITHUB_REF_NAME}" || { echo "El tag ${GITHUB_REF_NAME} no coincide con VERSION ($(cat VERSION))"; exit 1; }
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Librerías de Qt
+        run: sudo apt-get -o Acquire::Retries=5 update -q && sudo apt-get -o Acquire::Retries=5 install -y -q libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - name: Tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements-dev.txt
+          python -m unittest discover -s tests
+          python tests/smoke_ui.py
+
+  windows:
+    needs: verificar
+    runs-on: windows-2022                     # trae Inno Setup 6 y el Windows SDK (Universal CRT)
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: win-x64                     # PySide6: Windows 10/11
+            python: "3.12"
+            arch: x64
+          - name: win7-x64                    # PySide2 / Python 3.8: Windows 7 a 11
+            python: "3.8.10"
+            arch: x64
+          - name: win7-x86                    # 32 bits: solo existe con PySide2
+            python: "3.8.10"
+            arch: x86
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: ${{ matrix.arch }}
+      - name: Dependencias
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt nuitka
+      - name: Inno Setup
+        shell: pwsh
+        run: if (-not (Test-Path "C:\Program Files (x86)\Inno Setup 6\ISCC.exe")) { choco install innosetup -y --no-progress }
+      - name: Compilar (Nuitka + Inno Setup)
+        run: python build/build_windows.py
+      - name: Autodiagnóstico del ejecutable compilado
+        shell: pwsh
+        run: |
+          $p = Start-Process dist/nuitka/main.dist/NetworkTool.exe -ArgumentList "--selftest","selftest.json" -PassThru -Wait -NoNewWindow
+          Get-Content selftest.json
+          if ($p.ExitCode -ne 0) { throw "El autodiagnóstico falló (código $($p.ExitCode))" }
+      - name: Prueba de humo de la interfaz
+        shell: pwsh
+        env:
+          NETWORKTOOL_SMOKE_TEST: "1"
+        run: |
+          $p = Start-Process dist/nuitka/main.dist/NetworkTool.exe -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw "La interfaz no se cerró sola" }
+          if ($p.ExitCode -ne 0) { throw "La prueba de humo falló (código $($p.ExitCode))" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist/release/*
+          if-no-files-found: error
+
+  linux:
+    needs: verificar
+    runs-on: ubuntu-22.04                     # glibc 2.35: el AppImage corre en distros de 2022 en adelante
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Librerías del sistema (compilar y prueba de humo)
+        run: >
+          sudo apt-get -o Acquire::Retries=5 update -q && sudo apt-get -o Acquire::Retries=5 install -y -q patchelf xvfb
+          libegl1 libgl1 libxkbcommon0 libxkbcommon-x11-0 libfontconfig1 libdbus-1-3
+          libxcb-cursor0 libxcb-icccm4 libxcb-keysyms1 libxcb-image0 libxcb-render-util0
+          libxcb-randr0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
+      - name: Dependencias de Python
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt nuitka
+      - name: appimagetool (versión fija, verificada por SHA-256)
+        run: |
+          curl -fsSL --retry 5 -o appimagetool https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage
+          echo "ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0  appimagetool" | sha256sum -c -
+          chmod +x appimagetool
+      - name: Compilar (Nuitka + AppImage)
+        run: python build/build_linux.py --appimagetool ./appimagetool
+      - name: Autodiagnóstico y prueba de humo del AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          chmod +x dist/release/*.AppImage
+          APP=$(ls dist/release/*.AppImage)
+          xvfb-run -a timeout 120 "$APP" --selftest selftest.json; rc=$?; cat selftest.json; test $rc -eq 0
+          NETWORKTOOL_SMOKE_TEST=1 xvfb-run -a timeout 120 "$APP"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: dist/release/*
+          if-no-files-found: error
+
+  publicar:
+    # Se publica aunque falle Linux (p. ej. por la red de los runners de Ubuntu): al
+    # reintentar ese job, este vuelve a correr y agrega el AppImage que faltaba.
+    if: startsWith(github.ref, 'refs/tags/v') && !cancelled() && needs.windows.result == 'success'
+    needs: [windows, linux]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: SHA256SUMS.txt y notas del CHANGELOG
+        run: |
+          cd artifacts && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt && cd ..
+          awk -v v="$(cat VERSION)" '$0 ~ "^## \\[" v "\\]" {on=1; next} on && /^## \[/ {exit} on' CHANGELOG.md > notas.md
+          test -s notas.md || echo "Ver CHANGELOG.md" > notas.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notas.md
+          files: artifacts/*
