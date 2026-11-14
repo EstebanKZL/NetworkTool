@@ -39,7 +39,7 @@ def arch() -> str:
 
 def windows_flags() -> list:
     flags = [
-        "--windows-console-mode=disable",
+        "--windows-console-mode=attach",      # sin consola propia; si se abre desde una, escribe ahí
         "--windows-icon-from-ico={}".format(ROOT / "assets" / "icon.ico"),
         "--company-name=" + COMPANY,
         "--product-name=" + APP_NAME,

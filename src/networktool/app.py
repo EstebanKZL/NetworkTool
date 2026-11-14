@@ -172,7 +172,21 @@ def main():
             )
             QTimer.singleShot(300, lambda: _force_window_icon(hwnd, icon_path))
 
-        sys.exit(_exec(app))
+        rc = _exec(app)
+        # Cierre ordenado: la ventana (y sus hilos) se destruye mientras Qt sigue vivo, antes de
+        # que el intérprete desarme los objetos en un orden arbitrario. No usar os._exit: en
+        # Windows corta Qt con la QApplication viva y termina en un fallo de segmento.
+        win.deleteLater()
+        app.processEvents()
+        del win
+        import gc
+        gc.collect()
+        try:
+            from networktool.ui.theme import app_settings
+            app_settings().sync()
+        except Exception:
+            pass
+        sys.exit(rc)
 
     except Exception as _err:
         import traceback as _tb_mod

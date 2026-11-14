@@ -55,7 +55,6 @@ def nuitka_base(output_dir: Path, extra: list, qt: str) -> list:
         "--nofollow-import-to=" + other,
         "--nofollow-import-to=tkinter",
         "--nofollow-import-to=pytest",
-        "--nofollow-import-to=unittest",
         "--output-dir={}".format(output_dir),
         "--output-filename=" + APP_ARTIFACT + (".exe" if os.name == "nt" else ""),
         "--assume-yes-for-downloads",
